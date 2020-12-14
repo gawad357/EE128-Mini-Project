@@ -1,0 +1,103 @@
+#include <SPI.h>
+#include <Wire.h> // Library for I2C communication
+#include <LiquidCrystal_I2C.h> // Library for LCD
+
+// Wiring: SDA pin is connected to A4 and SCL pin to A5.
+// Connect to LCD via I2C, default address 0x27 (A0-A2 not jumpered)
+LiquidCrystal_I2C lcd = LiquidCrystal_I2C(0x27, 16, 2); // Change to (0x27,20,4) for 20x4 LCD.
+char buff [255];
+volatile byte indx;
+volatile boolean process;
+ 
+void setup (void) {
+   Serial.begin (115200);
+   pinMode(MISO, OUTPUT); // have to send on master in so it set as output
+   SPCR |= _BV(SPE); // turn on SPI in slave mode
+   indx = 0; // buffer empty
+   process = false;
+   SPI.attachInterrupt(); // turn on interrupt
+   // Initiate the LCD:
+   lcd.init();
+   lcd.backlight();
+       lcd.setCursor(0,0);// set the cursor to column 0, line 0
+    lcd.print("Welcome, Choose:");
+    lcd.setCursor(0, 1);// set the cursor to column 0, line 1
+    lcd.print("OPEN         NEW");// print the number of seconds since reset:
+}
+ 
+ISR (SPI_STC_vect) // SPI interrupt routine 
+{ 
+   byte c = SPDR; // read byte from SPI Data Register
+   
+   if (indx < sizeof(buff)) {
+      buff[indx++] = c; // save data in the next index in the array buff
+      if (c == '\n') { 
+        buff[indx - 1] = 0; // replace newline ('\n') with end of string (0)
+        process = true;
+      }
+   }   
+}
+
+void loop (void) {
+
+   if (process) {
+      process = false; //reset the process
+      if(buff[0]==49){//Case 1
+        Case1();
+      }
+      if(buff[0]==50){//Case 2
+        Case2();
+      }
+      if(buff[0]==51){//Case 3
+        Case3();
+      }
+      if(buff[0]==52){//Case 4
+        Case4();
+      }
+      if(buff[0]==53){//Case 5
+        Case5();
+      }
+      if(buff[0]==54){//CASE 6
+        Case6();
+      }
+      if(buff[0]==55){//CASE 7
+        Case7(1);
+      }
+      indx= 0; //reset button to zero
+   }
+}
+void Case1(){
+    lcd.setCursor(0,0);// set the cursor to column 0, line 0
+    lcd.print("Welcome, Choose:");
+    lcd.setCursor(0, 1);// set the cursor to column 0, line 1
+    lcd.print("OPEN         NEW");// print the number of seconds since reset:
+    Serial.print("Welcome, Choose:\n OPEN         NEW\n");
+}
+void Case2(){
+    lcd.setCursor(0,0);// set the cursor to column 0, line 0
+    lcd.print("Welcome, Choose:");
+    lcd.setCursor(0, 1);// set the cursor to column 0, line 1
+    lcd.print("CLOSE        NEW");// print the number of seconds since reset:
+    Serial.print("Welcome, Choose:\nCLOSE        NEW\n");
+}
+void Case3(){
+    lcd.setCursor(0,0);// set the cursor to column 0, line 0
+    lcd.print("Enter Password: ");
+    lcd.setCursor(0, 1);// set the cursor to column 0, line 1
+    lcd.print("ENTER           ");// print the number of seconds since reset:
+    Serial.print("Enter Password:\n\n");
+}
+void Case4(){
+    lcd.setCursor(0,0);// set the cursor to column 0, line 0
+    lcd.print("Current Password");
+    lcd.setCursor(0, 1);// set the cursor to column 0, line 1
+    lcd.print("Enter           ");// print the number of seconds since reset:
+    Serial.print("Enter Current\nPassword:\n");
+}
+void Case5(){
+    lcd.setCursor(0,0);// set the cursor to column 0, line 0
+    lcd.print("New Password    ");
+    lcd.setCursor(0, 1);// set the cursor to column 0, line 1
+    lcd.print("Enter           ");// print the number of seconds since reset:
+    Serial.print("Enter New\nPassword:\n");
+}
