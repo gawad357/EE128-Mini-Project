@@ -1,0 +1,511 @@
+
+ //Libraries Used For SPI Communication between Arduino and K64//
+#include "Cpu.h"
+#include "Events.h"
+#include "Pins1.h"
+#include "FX1.h"
+#include "GI2C1.h"
+#include "WAIT1.h"
+#include "CI2C1.h"
+#include "CsIO1.h"
+#include "IO1.h"
+#include "SM1.h"
+#include "MCUC1.h"
+#include "PE_Types.h"
+#include "PE_Error.h"
+#include "PE_Const.h"
+#include "IO_Map.h"
+#include "PDD_Includes.h"
+#include "Init_Config.h"
+
+
+unsigned long CurrentPassword[16] = {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}; //Current Password array filled with 0x00//
+unsigned long EntPassword[16] =     {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}; //Enter Password array filled with 0x00//
+int x=0;//EntPassword and CurrentPassword array position to 0//
+int y=0;//Default Value of Keypad to For EntPassword//
+int KP=0;//Default Value of Keypad to For CurrentPassword//
+int CASE=1; //Keeps track of all the cases. There are 5 cases//
+int len; //Used to Print out to the LCD Display//
+int SAVEDCASE=1; //Used to Flag certain cases//
+unsigned char write[512];
+int OpenLock(){//Moves Motor to Open Position//
+	for(int i=0;i<27;i++){//Timing used to Move Motor - 180 Degrees//
+		//Full Stepping Sequence//
+		GPIOD_PDOR=0xE2;
+		for(int x=0; x<6000;x++); //Delay Speed for Motor//
+		GPIOD_PDOR=0xE1;
+		for(int x=0; x<6000;x++);//Delay Speed for Motor//
+		GPIOD_PDOR=0xD1;
+		for(int x=0; x<6000;x++);//Delay Speed for Motor//
+		GPIOD_PDOR=0xD2;
+		for(int x=0; x<6000;x++);//Delay Speed for Motor//
+	}
+}
+int CloseLock(){//Moves Motor to Close Position//
+	for(int i=0; i<27;i++){// Timing used to Move Motor + 180 Degrees//
+		//Full Stepping Sequence//
+		GPIOD_PDOR=0xD2;
+		for(int x=0; x<6000;x++);//Delay Speed for Motor//
+		GPIOD_PDOR=0xD1;
+		for(int x=0; x<6000;x++);//Delay Speed for Motor//
+		GPIOD_PDOR=0xE1;
+		for(int x=0; x<6000;x++);//Delay Speed for Motor//
+		GPIOD_PDOR=0xE2;
+		for(int x=0; x<6000;x++);//Delay Speed for Motor//
+	}
+}
+int Button1(){//1st Button to interact with LCD Display//
+	if((GPIOC_PDIR & 0x01)==0){ //PORT C, PIN 0 Input//
+		while((GPIOC_PDIR & 0x01)==0){}//Button Press Delay//
+		for(long i = 0; i < 10000; i++){}
+		return 1; //If Button is Pressed//
+	}
+	return 0;//If Button is Not Pressed//
+}
+int Button2(){//2nd Button to interact with LCD Display//
+	if((GPIOC_PDIR & 0x02)==0){//PORT C, PIN 1 Input//
+		while((GPIOC_PDIR & 0x02)==0){}//Button Press Delay//
+		for(long i = 0; i < 10000; i++){}
+		return 1;//If Button is Pressed//
+	}
+	return 0;//If Button is Not Pressed//
+}
+int ButtonA(){
+	if((GPIOC_PDIR & 0x04)==0){//PORT C, PIN 2 Input//
+		while((GPIOC_PDIR & 0x04)==0){}//Button Press Delay//
+		for(long i = 0; i < 10000; i++){}
+		return 1;//If Button is Pressed//
+	}
+	return 0;//If Button is Not Pressed//
+}
+int ButtonB(){
+	if((GPIOC_PDIR & 0x08)==0){//PORT C, PIN 3 Input//
+		while((GPIOC_PDIR & 0x08)==0){}//Button Press Delay//
+		for(long i = 0; i < 10000; i++){}
+		return 1;//If Button is Pressed//
+	}
+	return 0;//If Button is Not Pressed//
+}
+int ButtonC(){
+	if((GPIOC_PDIR & 0x10)==0){//PORT C, PIN 4 Input//
+		while((GPIOC_PDIR & 0x10)==0){}//Button Press Delay//
+		for(long i = 0; i < 10000; i++){}
+		return 1;//If Button is Pressed//
+	}
+	return 0;//If Button is Not Pressed//
+}
+int ButtonD(){
+	if((GPIOC_PDIR & 0x80)==0){//PORT C, PIN 7 Input//
+		while((GPIOC_PDIR & 0x80)==0){}//Button Press Delay//
+		for(long i = 0; i < 10000; i++){}
+		return 1;//If Button is Pressed//
+	}
+	return 0;//If Button is Not Pressed//
+}
+int KeyPAD(){//Used for button Presses on Keypad//
+	GPIOB_PDOR = 0x00060C;//Turn on PORTB PINS 2, 3, 9, 10//
+	if(!((GPIOB_PDIR & 0x1C0800)==0)){//Enter if PORTB PINS 11, 18, 19, 20 detect a current//
+		GPIOB_PDOR = 0x000004;//TURN ON PORTB Pin 2//
+		if(!((GPIOB_PDIR & 0x100000)==0)){//ENTER IF PORTB PIN 20 Detects a current//
+			GPIOB_PDOR=0x04;//TURN ON PORTB Pin 2//
+			if(!((GPIOB_PDIR & 0x100000)==0)){//ENTER IF PORTB PIN 20 Detects a current//
+				while(!((GPIOB_PDIR & 0x100000)==0))//Button Press Delay//
+					GPIOB_PDOR = 0x800004;//TURN ON PORTB Pin 2//
+				}
+				for(long i = 0; i < 10000; i++){}
+				GPIOB_PDOR = 0x800004;//TURN ON PORTB Pin 2//
+				return 0x01;//1 on Keypad is pressed//
+			}
+		}
+		GPIOB_PDOR = 0x000004;//TURN ON PORTB Pin 2//
+		if(!((GPIOB_PDIR & 0x080000)==0)){//ENTER IF PORTB PIN 19 Detects a current//
+			GPIOB_PDOR=0x04;//TURN ON PORTB Pin 2//
+			if(!((GPIOB_PDIR & 0x080000)==0)){//ENTER IF PORTB PIN 19 Detects a current//
+				while(!((GPIOB_PDIR & 0x080000)==0)){//Button Press Delay//
+					GPIOB_PDOR = 0x800004;//TURN ON PORTB Pin 2//
+				}
+				for(long i = 0; i < 10000; i++){}
+				GPIOB_PDOR = 0x800004;//TURN ON PORTB Pin 2//
+				return 0x02;//2 on Keypad is pressed//
+			}
+		}
+		GPIOB_PDOR = 0x000004;//TURN ON PORTB Pin 2//
+		if(!((GPIOB_PDIR & 0x040000)==0)){//ENTER IF PORTB PIN 18 Detects a current//
+			GPIOB_PDOR=0x04;//TURN ON PORTB Pin 2//
+			if(!((GPIOB_PDIR & 0x040000)==0)){//ENTER IF PORTB PIN 18 Detects a current//
+				while(!((GPIOB_PDIR & 0x040000)==0)){//Button Press Delay//
+					GPIOB_PDOR = 0x800004;//TURN ON PORTB Pin 2//
+				}
+				for(long i = 0; i < 10000; i++){}
+				GPIOB_PDOR = 0x800004;//TURN ON PORTB Pin 2//
+				return 0x03;//3 on Keypad is pressed//
+			}
+		}
+		GPIOB_PDOR = 0x000004;//TURN ON PORTB Pin 2//
+		if(!((GPIOB_PDIR & 0x000800)==0)){//ENTER IF PORTB PIN 11 Detects a current//
+			GPIOB_PDOR=0x04;//TURN ON PORTB Pin 2//
+			if(!((GPIOB_PDIR & 0x000800)==0)){//ENTER IF PORTB PIN 11 Detects a current//
+				while(!((GPIOB_PDIR & 0x000800)==0)){//Button Press Delay//
+					GPIOB_PDOR = 0x800004;//TURN ON PORTB Pin 2//
+				}
+				for(long i = 0; i < 10000; i++){}
+				GPIOB_PDOR = 0x800004;//TURN ON PORTB Pin 2//
+				return 0x04;//A on Keypad is pressed//
+			}
+		}
+
+
+
+		GPIOB_PDOR = 0x000008;//TURN ON PORTB Pin 3//
+		if(!((GPIOB_PDIR & 0x100000)==0)){//ENTER IF PORTB PIN 20 Detects a current//
+			GPIOB_PDOR = 0x000008;//TURN ON PORTB Pin 3//
+			if(!((GPIOB_PDIR & 0x100000)==0)){//ENTER IF PORTB PIN 20 Detects a current//
+				while(!((GPIOB_PDIR & 0x100000)==0)){//Button Press Delay//
+					GPIOB_PDOR = 0x800008;//TURN ON PORTB Pin 3//
+				}
+				for(long i = 0; i < 10000; i++){}
+				GPIOB_PDOR = 0x800008;//TURN ON PORTB Pin 3//
+				return 0x05;//4 on Keypad is pressed//
+			}
+		}
+		GPIOB_PDOR = 0x000008;//TURN ON PORTB Pin 3//
+		if(!((GPIOB_PDIR & 0x080000)==0)){//ENTER IF PORTB PIN 19 Detects a current//
+			GPIOB_PDOR = 0x000008;//TURN ON PORTB Pin 3//
+			if(!((GPIOB_PDIR & 0x080000)==0)){//ENTER IF PORTB PIN 19 Detects a current//
+				while(!((GPIOB_PDIR & 0x080000)==0)){//Button Press Delay//
+					GPIOB_PDOR = 0x800008;//TURN ON PORTB Pin 3//
+				}
+				for(long i = 0; i < 10000; i++){}
+				GPIOB_PDOR = 0x800008;//TURN ON PORTB Pin 3//
+				return 0x06;//5 on Keypad is pressed//
+			}
+		}
+		GPIOB_PDOR = 0x000008;//TURN ON PORTB Pin 3//
+		if(!((GPIOB_PDIR & 0x040000)==0)){//ENTER IF PORTB PIN 18 Detects a current//
+			GPIOB_PDOR = 0x000008;//TURN ON PORTB Pin 3//
+			if(!((GPIOB_PDIR & 0x040000)==0)){//ENTER IF PORTB PIN 18 Detects a current//
+				while(!((GPIOB_PDIR & 0x040000)==0)){//Button Press Delay//
+					GPIOB_PDOR = 0x800008;//TURN ON PORTB Pin 3//
+				}
+				for(long i = 0; i < 10000; i++){}
+				GPIOB_PDOR = 0x800008;//TURN ON PORTB Pin 3//
+				return 0x07;//6 on Keypad is pressed//
+			}
+		}
+		GPIOB_PDOR = 0x000008;//TURN ON PORTB Pin 3//
+		if(!((GPIOB_PDIR & 0x000800)==0)){//ENTER IF PORTB PIN 11 Detects a current//
+			GPIOB_PDOR = 0x000008;//TURN ON PORTB Pin 3//
+			if(!((GPIOB_PDIR & 0x000800)==0)){//ENTER IF PORTB PIN 11 Detects a current//
+				while(!((GPIOB_PDIR & 0x000800)==0)){//Button Press Delay//
+					GPIOB_PDOR = 0x800008;//TURN ON PORTB Pin 3//
+				}
+				for(long i = 0; i < 10000; i++){}
+				GPIOB_PDOR = 0x800008;//TURN ON PORTB Pin 3//
+				return 0x08;//B on Keypad is pressed//
+			}
+		}
+
+
+		GPIOB_PDOR = 0x000200;//TURN ON PORTB Pin 9//
+		if(!((GPIOB_PDIR & 0x100000)==0)){//ENTER IF PORTB PIN 20 Detects a current//
+			GPIOB_PDOR = 0x000200;//TURN ON PORTB Pin 9//
+			if(!((GPIOB_PDIR & 0x100000)==0)){//ENTER IF PORTB PIN 20 Detects a current//
+				while(!((GPIOB_PDIR & 0x100000)==0)){//Button Press Delay//
+					GPIOB_PDOR = 0x800200;//TURN ON PORTB Pin 9//
+				}
+				for(long i = 0; i < 10000; i++){}
+				GPIOB_PDOR = 0x800200;//TURN ON PORTB Pin 9//
+				return 0x09;//7 on Keypad is pressed//
+			}
+		}
+
+		GPIOB_PDOR = 0x000200;//TURN ON PORTB Pin 9//
+		if(!((GPIOB_PDIR & 0x080000)==0)){//ENTER IF PORTB PIN 19 Detects a current//
+			GPIOB_PDOR = 0x000200;//TURN ON PORTB Pin 9//
+			if(!((GPIOB_PDIR & 0x080000)==0)){//ENTER IF PORTB PIN 19 Detects a current//
+				while(!((GPIOB_PDIR & 0x080000)==0)){//Button Press Delay//
+					GPIOB_PDOR = 0x800200;//TURN ON PORTB Pin 9//
+				}
+				for(long i = 0; i < 10000; i++){}
+				GPIOB_PDOR = 0x800200;//TURN ON PORTB Pin 9//
+				return 0x09;//8 on Keypad is pressed//
+			}
+		}
+		GPIOB_PDOR = 0x000200;//TURN ON PORTB Pin 9//
+		if(!((GPIOB_PDIR & 0x040000)==0)){//ENTER IF PORTB PIN 18 Detects a current//
+			GPIOB_PDOR = 0x000200;//TURN ON PORTB Pin 9//
+			if(!((GPIOB_PDIR & 0x040000)==0)){//ENTER IF PORTB PIN 18 Detects a current//
+				while(!((GPIOB_PDIR & 0x040000)==0)){//Button Press Delay//
+					GPIOB_PDOR = 0x800200;//TURN ON PORTB Pin 9//
+				}
+				for(long i = 0; i < 10000; i++){}
+				GPIOB_PDOR = 0x800200;//TURN ON PORTB Pin 9//
+				return 0x11;//9 on Keypad is pressed//
+			}
+		}
+		GPIOB_PDOR = 0x000200;//TURN ON PORTB Pin 9//
+		if(!((GPIOB_PDIR & 0x000800)==0)){//ENTER IF PORTB PIN 11 Detects a current//
+			GPIOB_PDOR = 0x000200;//TURN ON PORTB Pin 9//
+			if(!((GPIOB_PDIR & 0x000800)==0)){//ENTER IF PORTB PIN 11 Detects a current//
+				while(!((GPIOB_PDIR & 0x000800)==0)){//Button Press Delay//
+					GPIOB_PDOR = 0x800200;//TURN ON PORTB Pin 9//
+				}
+				for(long i = 0; i < 10000; i++){}
+				GPIOB_PDOR = 0x800200;//TURN ON PORTB Pin 9//
+				return 0x12;//C on Keypad is pressed//
+			}
+		}
+
+
+
+
+		GPIOB_PDOR = 0x000400;//TURN ON PORTB Pin 10//
+		if(!((GPIOB_PDIR & 0x100000)==0)){//ENTER IF PORTB PIN 20 Detects a current//
+			GPIOB_PDOR = 0x000400;//TURN ON PORTB Pin 10//
+			if(!((GPIOB_PDIR & 0x100000)==0)){//ENTER IF PORTB PIN 20 Detects a current//
+				while(!((GPIOB_PDIR & 0x100000)==0)){//Button Press Delay//
+					GPIOB_PDOR = 0x800400;//TURN ON PORTB Pin 10//
+				}
+				for(long i = 0; i < 10000; i++){}
+				GPIOB_PDOR = 0x800400;//TURN ON PORTB Pin 10//
+				return 0x13;//* on Keypad is pressed//
+			}
+		}
+		GPIOB_PDOR = 0x000400;//TURN ON PORTB Pin 10//
+		if(!((GPIOB_PDIR & 0x080000)==0)){//ENTER IF PORTB PIN 19 Detects a current//
+			GPIOB_PDOR = 0x000400;//TURN ON PORTB Pin 10//
+			if(!((GPIOB_PDIR & 0x080000)==0)){//ENTER IF PORTB PIN 19 Detects a current//
+				while(!((GPIOB_PDIR & 0x080000)==0)){//Button Press Delay//
+					GPIOB_PDOR = 0x800400;//TURN ON PORTB Pin 10//
+				}
+				for(long i = 0; i < 10000; i++){}
+				GPIOB_PDOR = 0x800400;//TURN ON PORTB Pin 10//
+				return 0x14;//0 on Keypad is pressed//
+			}
+		}
+		GPIOB_PDOR = 0x000400;//TURN ON PORTB Pin 10//
+		if(!((GPIOB_PDIR & 0x040000)==0)){//ENTER IF PORTB PIN 18 Detects a current//
+			GPIOB_PDOR = 0x000400;//TURN ON PORTB Pin 10//
+			if(!((GPIOB_PDIR & 0x040000)==0)){//ENTER IF PORTB PIN 18 Detects a current//
+				while(!((GPIOB_PDIR & 0x040000)==0)){//Button Press Delay//
+					GPIOB_PDOR = 0x800400;//TURN ON PORTB Pin 10//
+				}
+				for(long i = 0; i < 10000; i++){}
+				GPIOB_PDOR = 0x800400;//TURN ON PORTB Pin 10//
+				return 0x15;//# on Keypad is pressed//
+			}
+		}
+		GPIOB_PDOR = 0x000400;//TURN ON PORTB Pin 10//
+		if(!((GPIOB_PDIR & 0x000800)==0)){//ENTER IF PORTB PIN 19 Detects a current//
+			GPIOB_PDOR = 0x000400;//TURN ON PORTB Pin 10//
+			if(!((GPIOB_PDIR & 0x000800)==0)){//ENTER IF PORTB PIN 11 Detects a current//
+				while(!((GPIOB_PDIR & 0x000800)==0)){//Button Press Delay//
+					GPIOB_PDOR = 0x800400;//TURN ON PORTB Pin 10//
+				}
+				for(long i = 0; i < 10000; i++){}
+				GPIOB_PDOR = 0x800400;//TURN ON PORTB Pin 10//
+				return 0x16;//D on Keypad is pressed//
+			}
+		}
+
+}
+int EnterPassword(){//Used if User is prompted to enter current password//
+	if(x==0){
+		for(long i = 0; i < 16; i++){//EntPassword Array filled with 0x00//
+			EntPassword[i]=0x00;
+		}
+	}
+	if(x<=15){//Array Max size is 16//
+		if(ButtonA()==1){
+			EntPassword[x]=0x0A;//Input Array position with 0x0A//
+			x=x+1;//Increase Array Position//
+		}
+		if(ButtonB()==1){
+			EntPassword[x]=0x0B;//Input Array position with 0x0B//
+			x=x+1;//Increase Array Position//
+		}
+		if(ButtonC()==1){
+			EntPassword[x]=0x0C;//Input Array position with 0x0C//
+			x=x+1;//Increase Array Position//
+		}
+		if(ButtonD()==1){
+			EntPassword[x]=0x0D;//Input Array position with 0x0D//
+			x=x+1;//Increase Array Position//
+		}
+		y=KeyPAD();//Get Value From Keypad: 0x01-0x16//
+		if(!(y==0)){//Only enters if a number from Keypad is entered//
+			EntPassword[x]=y;//Input Array position with returned value from Keypad: 0x01-0x16//
+			x=x+1;//Increase Array Position//
+			y=0;//Set Value from Keypad to 0//
+		}
+	}
+}
+int EnterNewPassword(){//Used if User is prompted to enter new password//
+	if(x==0){
+		for(long i = 0; i < 16; i++){//EntPassword Array filled with 0x00//
+			CurrentPassword[i]=0x00;
+		}
+	}
+	if(x<=15){
+		if(ButtonA()==1){
+			CurrentPassword[x]=0x0A;//Input Array position with 0x0A//
+			x=x+1;//Increase Array Position//
+		}
+		if(ButtonB()==1){
+			CurrentPassword[x]=0x0B;//Input Array position with 0x0A//
+			x=x+1;//Increase Array Position//
+		}
+		if(ButtonC()==1){
+			CurrentPassword[x]=0x0C;//Input Array position with 0x0A//
+			x=x+1;//Increase Array Position//
+		}
+		if(ButtonD()==1){
+			CurrentPassword[x]=0x0D;//Input Array position with 0x0A//
+			x=x+1;//Increase Array Position//
+		}
+		KP=KeyPAD();//Get Value From Keypad: 0x01-0x16//
+		if(!(KP==0)){//Only enters if a number from Keypad is entered//
+			CurrentPassword[x]=KP;//Input Array position with returned value from Keypad: 0x01-0x16//
+			x=x+1;x=x+1;//Increase Array Position//
+			KP=0;y=0;//Set Value from Keypad to 0//
+		}
+	}
+}
+int ComparePassword(){
+	x=0;//Set EntPassword and Current array position to 0//
+	for(long i = 0; i < 16; i++){
+		if(!(CurrentPassword[i]==EntPassword[i])){//Compare Current and Entered Password to see if they match
+			return 0; //Return 0 if passwords do not match//
+		}
+	}
+	return 1;//Return 1 if passwords do not match//
+}
+int main(void){
+	PE_low_level_init(); //Do Not Remove. Used for SPI Communication//
+	uint32_t delay; //Do Not Remove. Used for SPI Communication//
+	LDD_TDeviceData *SM1_DeviceData;//Do Not Remove. Used for SPI Communication//
+	SM1_DeviceData = SM1_Init(NULL);//Do Not Remove. Used for SPI Communication//
+
+
+	//Used For Buttons
+	PORTC_PCR0 = 0x0100; /*Configure PORTC Pin 0 as GPIO*/
+	PORTC_PCR1 = 0x0100; /*Configure PORTC Pin 1 as GPIO*/
+	PORTC_PCR2 = 0x0100; /*Configure PORTC Pin 2 as GPIO*/
+	PORTC_PCR3 = 0x0100; /*Configure PORTC Pin 3 as GPIO*/
+	PORTC_PCR4 = 0x0100; /*Configure PORTC Pin 4 as GPIO*/
+	PORTC_PCR7 = 0x0100; /*Configure PORTC Pin 7 as GPIO*/
+	GPIOC_PDDR = 0x00000000; /*Configure PORTC Pins 0-7 as Input*/
+
+
+	//Port B Used For KeyPad//
+	PORTB_PCR2 = 0x100;/*Configure PORTB Pin 2 as GPIO*/
+	PORTB_PCR3 = 0x100;/*Configure PORTB Pin 3 as GPIO*/
+	PORTB_PCR9 = 0x100;/*Configure PORTB Pin 9 as GPIO*/
+	PORTB_PCR10 = 0x100;/*Configure PORTB Pin 10 as GPIO*/
+	PORTB_PCR11 = 0x100;/*Configure PORTB Pin 11 as GPIO*/
+	PORTB_PCR18 = 0x100;/*Configure PORTB Pin 18 as GPIO*/
+	PORTB_PCR19 = 0x100;/*Configure PORTB Pin 19 as GPIO*/
+	PORTB_PCR20 = 0x100;/*Configure PORTB Pin 20 as GPIO*/
+	PORTB_PCR23 =0x100;/*Configure PORTB Pin 23 as GPIO*/
+	GPIOB_PDDR = 0x80060C; /*Configure PORTB Pins 2,3,9, 10, and 23 as Output,Inputs: 11, 18, 19, 20 */
+	GPIOB_PDOR = 0x00060C; //Turn on PORTB PINS 2, 3, 9, 10//
+
+
+	//Port D used for Motor Driver//
+	PORTD_PCR0 = 0x100;/*Configure PORTD Pin 0 as GPIO*/
+	PORTD_PCR1 = 0x100;/*Configure PORTD Pin 1 as GPIO*/
+	PORTD_PCR4 = 0x100;/*Configure PORTD Pin 4 as GPIO*/
+	PORTD_PCR5 = 0x100;/*Configure PORTD Pin 5 as GPIO*/
+	PORTD_PCR6 = 0x100;/*Configure PORTD Pin 6 as GPIO*/
+	PORTD_PCR7 = 0x100;/*Configure PORTD Pin 7 as GPIO*/
+	GPIOD_PDDR = 0x000000F3; /*Configure PORTD Pins 0-7 as Output*/
+
+
+	len = sprintf(write, "1\n"); //Start at CASE 1
+	SM1_SendBlock(SM1_DeviceData, &write, len); //Send Case 1 to Arduino//
+	for(long i = 0; i < 20000; i++);//Used at startup so K64 and Arduino can sync//
+	while(1){
+
+		if(CASE==1){ //CASE 1//											//OPEN      NEW
+			if(Button1()==1){
+				CASE=3;//Set CASE 3 on K64//
+				len = sprintf(write, "3\n");
+				SM1_SendBlock(SM1_DeviceData, &write, len);//Set CASE 3 on Arduino//
+
+			}
+			if(Button2()==1){
+				CASE=4;//Set CASE 4 on K64//
+				SAVEDCASE=1;
+				len = sprintf(write, "4\n");//CASE=4
+				SM1_SendBlock(SM1_DeviceData, &write, len);//Set CASE 4 on Arduino//
+			}
+		}
+		if(CASE==2){//CASE 2//											//Close    NEW
+			if(Button1()==1){
+				CASE=1;//Set CASE 1 on K64//
+				len = sprintf(write, "1\n");//CASE=1
+				SM1_SendBlock(SM1_DeviceData, &write, len);//Set CASE 1 on Arduino//
+				CloseLock(); //Close Lock
+			}
+			if(Button2()==1){
+				CASE=4;//Set CASE 4 on K64//
+				SAVEDCASE=2;//Set SAVEDCASE to CASE 2//
+				len = sprintf(write, "4\n");//CASE=4
+				SM1_SendBlock(SM1_DeviceData, &write, len);//Set CASE 4 on Arduino//
+			}
+		}
+		if(CASE==3){//CASE 3//											//Enter Password
+			EnterPassword(); //Enter Password function//
+			if(Button1()==1){
+				if(ComparePassword()==1){ //Compare EntPassword with Current Password//
+					CASE=2;//Set CASE 2 on K64//
+					len = sprintf(write, "2\n");//CASE=2
+					SM1_SendBlock(SM1_DeviceData, &write, len);//Set CASE 2 on Arduino//
+					OpenLock(); //Open Lock//
+				}
+				else{
+					CASE=1;//Set CASE 1 on K64//
+					len = sprintf(write, "1\n");//CASE=1
+					SM1_SendBlock(SM1_DeviceData, &write, len);//Set CASE 1 on Arduino//
+
+				}
+			}
+		}
+		if(CASE==4){//CASE 4//											//New Password//Current Password
+			EnterPassword();
+			if(Button1()==1){
+				if(ComparePassword()==1){
+					CASE=5;//Set CASE 5 on K64//
+					len = sprintf(write, "5\n");//CASE=5
+					SM1_SendBlock(SM1_DeviceData, &write, len);//Set CASE 5 on Arduino//
+				}
+				else{
+					CASE=SAVEDCASE; //CASE is set to SAVEDCASE//
+					if(SAVEDCASE==1){
+						len = sprintf(write, "1\n");//CASE=1
+						SM1_SendBlock(SM1_DeviceData, &write, len);//Set CASE 1 on Arduino//
+					}
+					if(SAVEDCASE==2){
+						len = sprintf(write, "2\n");//CASE=2
+						SM1_SendBlock(SM1_DeviceData, &write, len);//Set CASE 2 on Arduino//
+					}
+				}
+			}
+		}
+		if(CASE==5){//CASE 5//										//New Password// Set New Password
+			EnterNewPassword();
+			if(Button1()==1){
+				CASE=SAVEDCASE;//CASE is set to SAVEDCASE//
+				x=0;//Set EntPassword and Current array position to 0//
+				if(CASE==1){
+					len = sprintf(write, "1\n");//CASE=1
+					SM1_SendBlock(SM1_DeviceData, &write, len);//Set CASE 1 on Arduino//
+				}
+				if(CASE==2){
+					len = sprintf(write, "2\n");//CASE=2
+					SM1_SendBlock(SM1_DeviceData, &write, len);//Set CASE 2 on Arduino//
+				}
+			}
+		}
+	}
+}
